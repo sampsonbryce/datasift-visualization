@@ -1,0 +1,3 @@
+*.sh*
+*credentials.js*
+*node_modules*
