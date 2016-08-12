@@ -20,13 +20,34 @@ var Visual = React.createClass({
                 'Star Wars': {
                     filter: 'fb.author.country_code in "US" and fb.all.content contains "Star Wars"',
                     title: 'Sentinment towards Star Wars according to Facebook interactions'
+                },
+                'Olympics': {
+                    filter: 'fb.author.country_code in "US" and fb.all.content contains_any "Olympics, olympics"',
+                    title: 'Sentinment towards the Olympics according to Facebook interactions'
                 }
             },
+            data_filter_object: {
+              'Available States': (state, total_interactions) => {return 1},
+              'Interaction Per State': (state, total_interactions) => {return (state.interactions / total_interactions) * 10},
+              'Sentiment Per State': (state, total_interactions) => {
+                if (state.child.results.length !== 0){
+                   return this.calculateSentiment(state, total_interactions);
+                }
+                return 0;
+              }
+            },
+            currently_selected_filter: 'Available States',
             currently_selected_object: 'World'
         }
         return state;
     },
     loadData() {
+        // $('#statesvg').remove();
+        // d3.select("#statesvg").remove();
+        $('#without-data').css('display', 'none');
+        $('#data-row').prepend(
+          '<div class="loader"></div>'
+        );
         let search_object = {
             id: credentials.entertainmentId,
             filter: this.curObject().filter,
@@ -46,7 +67,6 @@ var Visual = React.createClass({
             }
         }
         search_object = JSON.stringify(search_object);
-        console.log(search_object);
 
         $.ajax({
             url: 'https://pylonsandbox.datasift.com/v1.3/pylon/analyze',
@@ -57,21 +77,26 @@ var Visual = React.createClass({
                 Authorization: credentials.username + ':' + credentials.apiKey
             },
             success: function(data, status, request) {
-                console.log('success');
+                // console.log('success');
             },
             error: function(request, status, error) {
                 console.log('error', status, error);
             }
         }).then((response) => {
-            console.log('response', response);
             let cur_state = this.state;
             cur_state.data = response;
             this.setState(this.state);
+            $('#without-data').css('display', 'inline-block');
             this.graph();
         })
     },
     graph() {
-
+        $('.loader').remove();
+        // console.log('changin to inline')
+        // $('#data-row p').append(
+        //   '<svg width="960" height="600" id="statesvg"></svg>'
+        // )
+        console.log('graphing')
         var states_without_data = []
         var sampleData = {};/* Sample random data. */
         [
@@ -132,22 +157,11 @@ var Visual = React.createClass({
             var state = $.grep(this.state.data.analysis.results, (e) => {
                 return this.real_object[e.key] == d;
             });
-            console.log('data', state, total_interactions);
             var percent = 0;
             if (state.length !== 0) {
                 //we have data for this state
                 state = state[0]
-
-                // show which states we have data for and which we dont
-                percent = 1;
-
-                //percent of interactions per state
-                // percent = (state.interactions / total_interactions) * 10;
-
-                //determining negative or positive for each state
-                // if (state.child.results.length !== 0){
-                //   percent = this.calculateSentiment(state, total_interactions);
-                // }
+                percent = this.state.data_filter_object[this.state.currently_selected_filter](state, total_interactions);
             } else {
                 states_without_data.push(d);
             }
@@ -157,9 +171,6 @@ var Visual = React.createClass({
                 var i = d3.interpolate("#B3B3B3", "#F50723")
                 percent = Math.abs(percent)
             }
-            // d3.interpolate("#ffffcc", "#800026")
-
-            console.log('percent of available state', percent);
             sampleData[d] = {
                 color: i(percent)
             };
@@ -173,14 +184,12 @@ var Visual = React.createClass({
         d3.select(self.frameElement).style("height", "600px");
     },
     calculateSentiment(state, total_interactions) {
-        console.log('state.child.results', state.child.results);
         var neg_interactions = $.grep(state.child.results, (e) => {
             return e.key == 'negative';
         });
         var pos_interactions = $.grep(state.child.results, (e) => {
             return e.key == 'positive';
         });
-        console.log('pos, neg', pos_interactions, neg_interactions);
         if (pos_interactions.length !== 0 && neg_interactions.length !== 0) {
             var total_happiness = pos_interactions[0].interactions - neg_interactions[0].interactions;
         } else if (pos_interactions.length === 0 && neg_interactions.length !== 0) {
@@ -211,12 +220,18 @@ var Visual = React.createClass({
         var state = this.state;
         state.currently_selected_object = item;
         this.setState(state);
+        this.loadData();
+    },
+    changeFilter(item){
+        var state = this.state;
+        state.currently_selected_filter = item;
+        this.setState(state);
+        this.graph();
     },
     componentDidMount() {
-        // $('.dropdown-toggle').dropdown();
+        this.loadData();
     },
     render() {
-        this.loadData();
         return (
             <div id='map-container' className='container'>
                 <h1>{this.curObject().title}</h1>
@@ -228,16 +243,22 @@ var Visual = React.createClass({
                             )
                         })}
                     </DropdownButton>
+                    <DropdownButton id='data-dropdown' title={this.state.currently_selected_filter}>
+                        {Object.keys(this.state.data_filter_object).map((item, index) => {
+                            return (
+                                <MenuItem key={index} title={item} onSelect={this.changeFilter.bind(this, item)}>{item}</MenuItem>
+                            )
+                        })}
+                    </DropdownButton>
                 </div>
-                <div className='row'>
+                <div className='row' id='data-row'>
                     <p>
                         <svg width="960" height="600" id="statesvg"></svg>
                     </p>
-                    <div>
+                    <div id='without-data'>
                         <h4>States Without Data</h4>
                         <ul>
                             {this.state.states_without_data.map((element, index) => {
-                                console.log('index, element', index, element);
                                 return (
                                     <li key={index}>{element}</li>
                                 );
